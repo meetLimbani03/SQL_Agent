@@ -8,7 +8,8 @@ from langchain_core.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_openai_functions_agent
-from db_connector import SupabaseConnector
+from pg_connector import PostgresConnector
+from connection_manager import ConnectionManager
 
 # Load environment variables
 load_dotenv()
@@ -21,7 +22,11 @@ class SQLAgent:
         """
         Initialize the SQL agent with tools
         """
-        self.db = SupabaseConnector()
+        self.db = PostgresConnector()
+        
+        # Initialize connection manager with 10 minute timeout
+        self.connection_manager = ConnectionManager(self.db, idle_timeout=600)
+        
         self.llm = ChatOpenAI(
             model="gpt-4o",
             temperature=0,
@@ -43,26 +48,6 @@ class SQLAgent:
         """
         tools = [
             Tool(
-                name="list_schemas",
-                func=lambda _: self.db.get_schemas(),
-                description="Lists all available schemas in the database. Use this to get an overview of the database structure."
-            ),
-            Tool(
-                name="list_tables",
-                func=lambda schema: self.db.get_tables_in_schema(schema),
-                description="Lists all tables in a specific schema. Input should be a schema name."
-            ),
-            Tool(
-                name="get_table_schema",
-                func=lambda x: self.db.get_table_schema(*x.split('.')) if isinstance(x, str) and '.' in x else None,
-                description="Gets the schema of a specific table. Input should be a string in the format 'schema_name.table_name'."
-            ),
-            Tool(
-                name="get_foreign_keys",
-                func=lambda x: self.db.get_foreign_keys(*x.split('.')) if isinstance(x, str) and '.' in x else None,
-                description="Gets the foreign keys of a specific table. Input should be a string in the format 'schema_name.table_name'."
-            ),
-            Tool(
                 name="execute_query",
                 func=self.db.execute_query,
                 description="Executes a SQL query. Input should be a valid SQL query string."
@@ -75,22 +60,35 @@ class SQLAgent:
         Create the agent with tools
         """
         system_message = """
-        You are a helpful SQL assistant that can help users interact with a database.
+        You are a helpful SQL assistant that can help users interact with a PostgreSQL database.
         You have access to tools that can inspect the database schema and execute SQL queries.
         
         When a user asks a question about data, follow these steps:
-        1. First, determine which tables and schemas might be relevant to the query.
-        2. Use the appropriate tools to inspect the schema of those tables.
-        3. Formulate a SQL query based on the user's question and the schema information.
-        4. Execute the query and return the results.
+        1. First, explore the database schema to understand available tables using: 
+           SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
         
-        Important: Only request schema information for tables that are relevant to the user's query.
-        Do not try to load the entire database schema at once to prevent overloading.
+        2. For each relevant table, examine its structure using:
+           SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '<table_name>';
         
-        When using the get_table_schema or get_foreign_keys tools, provide the input as a string in the format 'schema_name.table_name'.
-        For example: 'public.users'
+        3. Discover relationships between tables using:
+           SELECT tc.table_schema, tc.constraint_name, tc.table_name, kcu.column_name, ccu.table_schema AS foreign_table_schema, ccu.table_name AS foreign_table_name, ccu.column_name AS foreign_column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name WHERE constraint_type = 'FOREIGN KEY';
         
-        Always explain your reasoning and the SQL queries you're executing.
+        4. CRITICAL: ALWAYS explore the actual data values before using them in queries. This is mandatory, not optional:
+           - When asked about countries, FIRST run: SELECT country_id, country_name FROM countries;
+           - When asked about departments, FIRST run: SELECT department_id, department_name FROM departments;
+           
+           When a user mentions a country name like "US" or "United States", NEVER assume the database format.
+           ALWAYS check both the country_id and country_name values in the database first.
+        
+        5. Formulate appropriate SQL queries, using JOINs when data spans multiple tables.
+        
+        Important notes:
+        - When users mention entities like countries, departments, or job titles in natural language, IMMEDIATELY check how they are stored in the database
+        - User queries like "employees from US" require checking if "US" is stored as country_id or country_name
+        - Try both exact matches and LIKE '%value%' if initial queries return no results
+        - Format SQL query results as markdown tables when possible
+        - Do not generate SQL queries that edit the database in any way
+        - Explain your reasoning and the SQL queries you're executing
         """
         
         prompt = ChatPromptTemplate.from_messages([
@@ -122,6 +120,9 @@ class SQLAgent:
         Run the agent with a user query
         """
         try:
+            # Update connection activity timestamp
+            self.connection_manager.update_activity()
+            
             # Include conversation history in the agent invocation
             response = self.agent_executor.invoke({
                 "input": query,

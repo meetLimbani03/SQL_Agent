@@ -8,7 +8,7 @@ from sql_agent import SQLAgent
 # Set page configuration
 st.set_page_config(
     page_title="SQL Agent",
-    page_icon="🤖",
+    page_icon="📊",
     layout="wide"
 )
 
@@ -20,11 +20,15 @@ if "agent" not in st.session_state:
 # and the agent's internal conversation_history for context
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+    
+# Track last activity time for connection management
+if "last_activity" not in st.session_state:
+    st.session_state.last_activity = 0
 
 # Title and description
-st.title("🤖 SQL Database Agent")
+st.title("SQL Database Agent")
 st.markdown("""
-This agent can help you query your Supabase database using natural language.
+This agent can help you query your PostgreSQL database using natural language.
 It will intelligently fetch only the schema information it needs to answer your question.
 """)
 
@@ -57,6 +61,10 @@ if user_query:
     # Display user message
     with st.chat_message("user"):
         st.write(user_query)
+    
+    # Update last activity timestamp
+    import time
+    st.session_state.last_activity = time.time()
     
     # Get response from agent
     with st.chat_message("assistant"):
@@ -102,6 +110,10 @@ if user_query:
                     "content": content,
                     "data": data
                 })
+                
+                # Update last activity timestamp
+                import time
+                st.session_state.last_activity = time.time()
             else:
                 error_message = f"Error: {response['error']}"
                 st.error(error_message)
@@ -111,3 +123,7 @@ if user_query:
                     "role": "assistant", 
                     "content": error_message
                 })
+                
+                # Update last activity timestamp
+                import time
+                st.session_state.last_activity = time.time()
