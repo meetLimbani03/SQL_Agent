@@ -3,4 +3,4 @@
 __pycache__
 sqlagent
 *.pub
-how many employees do i have
+.secrets.toml
