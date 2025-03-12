@@ -110,7 +110,8 @@ class SQLAgent:
             agent=agent,
             tools=self.tools,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            return_intermediate_steps=True  # This will return all steps for query extraction
         )
         
         return agent_executor
@@ -129,6 +130,16 @@ class SQLAgent:
                 "chat_history": self.conversation_history
             })
             
+            # Extract the last executed SQL query from the agent's intermediate steps
+            last_query = None
+            if "intermediate_steps" in response:
+                for step in response["intermediate_steps"]:
+                    if isinstance(step, tuple) and len(step) >= 1:
+                        action = step[0]
+                        if hasattr(action, 'tool') and action.tool == "execute_query":
+                            # Store the last SQL query
+                            last_query = action.tool_input
+            
             # Add the current interaction to the conversation history
             self.conversation_history.append(("human", query))
             self.conversation_history.append(("ai", response["output"]))
@@ -136,8 +147,13 @@ class SQLAgent:
             # Keep conversation history to a reasonable size (last 10 interactions)
             if len(self.conversation_history) > 20:  # 10 interactions (human + ai)
                 self.conversation_history = self.conversation_history[-20:]
-                
-            return {"success": True, "response": response["output"]}
+            
+            # Return response with the last executed query
+            return {
+                "success": True, 
+                "response": response["output"],
+                "last_query": last_query
+            }
         except Exception as e:
             import traceback
             print(f"Error in agent execution: {str(e)}")

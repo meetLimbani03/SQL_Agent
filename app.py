@@ -36,13 +36,23 @@ It will intelligently fetch only the schema information it needs to answer your 
 st.header("Chat with your Database")
 
 # Display chat history
-for message in st.session_state.chat_history:
+for i, message in enumerate(st.session_state.chat_history):
+    # If this is a user message and there's a previous assistant message with a query
+    if message["role"] == "user" and i > 0 and st.session_state.chat_history[i-1]["role"] == "assistant" and "last_query" in st.session_state.chat_history[i-1]:
+        # Display the SQL query above the user message
+        last_query = st.session_state.chat_history[i-1]["last_query"]
+        if last_query:
+            with st.container():
+                st.caption("Last executed SQL query:")
+                st.code(last_query, language="sql")
+    
+    # Display the actual message
     with st.chat_message(message["role"]):
-        if message["role"] == "assistant" and "data" in message:
+        if message["role"] == "assistant":
             st.write(message["content"])
             
             # Display data as table if available
-            if isinstance(message["data"], list) and len(message["data"]) > 0:
+            if "data" in message and isinstance(message["data"], list) and len(message["data"]) > 0:
                 try:
                     df = pd.DataFrame(message["data"])
                     st.dataframe(df)
@@ -76,6 +86,12 @@ if user_query:
                 # Extract any table data if present
                 data = None
                 content = response["response"]
+
+                 # Display the last executed SQL query if available
+                if "last_query" in response and response["last_query"]:
+                    with st.container():
+                        st.code(response["last_query"], language="sql")
+                
                 
                 # Check if the response contains SQL results
                 if "```json" in content:
@@ -108,7 +124,8 @@ if user_query:
                 st.session_state.chat_history.append({
                     "role": "assistant", 
                     "content": content,
-                    "data": data
+                    "data": data,
+                    "last_query": response.get("last_query")
                 })
                 
                 # Update last activity timestamp
