@@ -1,5 +1,5 @@
 """
-SQL Agent for interacting with Supabase database
+SQL Agent for interacting with PostgreSQL database
 """
 import os
 from typing import List, Dict, Any, Optional
