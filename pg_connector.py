@@ -1,9 +1,10 @@
 """
 PostgreSQL Connector for SQL Agent
 """
+import streamlit as st
 import os
 import time
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
@@ -20,11 +21,11 @@ class PostgresConnector:
         Initialize the PostgreSQL connector
         """
         self.connection_params = {
-            "host": os.getenv("POSTGRES_HOST", "localhost"),
-            "port": os.getenv("POSTGRES_PORT", "5432"),
-            "database": os.getenv("POSTGRES_DB", "postgres"),
-            "user": os.getenv("POSTGRES_USER", "postgres"),
-            "password": os.getenv("POSTGRES_PASSWORD", "postgres")
+            "host": st.secrets["postgres"]["POSTGRES_HOST"],
+            "port": st.secrets["postgres"]["POSTGRES_PORT"],
+            "database": st.secrets["postgres"]["POSTGRES_DB"],
+            "user": st.secrets["postgres"]["POSTGRES_USER"],
+            "password": st.secrets["postgres"]["POSTGRES_PASSWORD"]
         }
         # Connection timeout in seconds (default: 10 minutes)
         self.connection_timeout = int(os.getenv("POSTGRES_CONNECTION_TIMEOUT", "600"))

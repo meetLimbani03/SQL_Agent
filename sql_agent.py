@@ -1,8 +1,8 @@
 """
 SQL Agent for interacting with PostgreSQL database
 """
-import os
-from typing import List, Dict, Any, Optional
+import streamlit as st
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 from langchain_core.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -30,7 +30,7 @@ class SQLAgent:
         self.llm = ChatOpenAI(
             model="gpt-4o",
             temperature=0,
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=st.secrets["openai"]["OPENAI_API_KEY"]
         )
         
         # Create tools
