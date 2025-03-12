@@ -110,7 +110,8 @@ class SQLAgent:
             agent=agent,
             tools=self.tools,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            return_intermediate_steps=True  # This will return all steps for query extraction
         )
         
         return agent_executor
@@ -129,6 +130,41 @@ class SQLAgent:
                 "chat_history": self.conversation_history
             })
             
+            # Extract the last executed SQL query from the agent's intermediate steps
+            last_query = None
+            
+            # Print debug information about the response
+            print("Response keys:", list(response.keys()))
+            
+            if "intermediate_steps" in response:
+                print(f"Found {len(response['intermediate_steps'])} intermediate steps")
+                
+                # Loop through steps in reverse to find the last SQL query
+                for step in reversed(response["intermediate_steps"]):
+                    if isinstance(step, tuple) and len(step) >= 1:
+                        action = step[0]
+                        print(f"Action type: {type(action)}")
+                        print(f"Action dir: {dir(action)}")
+                        
+                        # Try different ways to extract the query
+                        if hasattr(action, 'tool') and action.tool == "execute_query" and hasattr(action, 'tool_input'):
+                            last_query = action.tool_input
+                            print(f"Found SQL query: {last_query}")
+                            break
+                        elif hasattr(action, 'args') and isinstance(action.args, dict) and 'sql_query' in action.args:
+                            last_query = action.args['sql_query']
+                            print(f"Found SQL query from args: {last_query}")
+                            break
+            
+            # If we couldn't find the query in intermediate steps, try to extract it from the output
+            if not last_query and "output" in response:
+                # Look for SQL patterns in the output
+                import re
+                sql_match = re.search(r"```sql\s*([\s\S]*?)\s*```", response["output"])
+                if sql_match:
+                    last_query = sql_match.group(1).strip()
+                    print(f"Extracted SQL query from output: {last_query}")
+            
             # Add the current interaction to the conversation history
             self.conversation_history.append(("human", query))
             self.conversation_history.append(("ai", response["output"]))
@@ -136,8 +172,13 @@ class SQLAgent:
             # Keep conversation history to a reasonable size (last 10 interactions)
             if len(self.conversation_history) > 20:  # 10 interactions (human + ai)
                 self.conversation_history = self.conversation_history[-20:]
-                
-            return {"success": True, "response": response["output"]}
+            
+            # Return response with the last executed query
+            return {
+                "success": True, 
+                "response": response["output"],
+                "last_query": last_query
+            }
         except Exception as e:
             import traceback
             print(f"Error in agent execution: {str(e)}")
